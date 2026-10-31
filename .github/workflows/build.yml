@@ -47,7 +47,7 @@ jobs:
       - name: Prepare App Icon
         run: |
           mkdir -p assets
-cp app-icon.png.png assets/icon.png
+          cp app-icon.png.png assets/icon.png
 
       - name: Generate Android Icons
         run: npx capacitor-assets generate --android
