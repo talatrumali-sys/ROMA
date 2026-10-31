@@ -1,3 +1,4 @@
+
 name: Build Tahaddi Android APK
 
 on:
@@ -11,35 +12,55 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Install dependencies
         run: npm install
+
+      - name: Install Capacitor Assets
+        run: npm install --no-save @capacitor/assets@^3
+
+      - name: Prepare app icon
+        run: |
+          mkdir -p assets
+          cp app-icon.png assets/icon.png
+
       - name: Build web app
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
+
       - name: Add Android platform
         run: npx cap add android
+
+      - name: Generate Android icons
+        run: npx capacitor-assets generate --android
+
       - name: Sync Android
         run: npx cap sync android
+
       - name: Build debug APK
         working-directory: android
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
