@@ -165,10 +165,7 @@ function renderAuth() {
       msg('لم يتم إنشاء جلسة دخول. حاول مرة أخرى.', true);
 
     } catch (error) {
-      msg(
-        `حدث خطأ: ${error.message || error}`,
-        true
-      );
+      msg(`حدث خطأ: ${error.message || error}`, true);
     } finally {
       loginBtn.disabled = false;
       signupBtn.disabled = false;
@@ -177,6 +174,125 @@ function renderAuth() {
 
   loginBtn.onclick = () => runAuth('login');
   signupBtn.onclick = () => runAuth('signup');
+}
+
+// شاشة اختيار الاسم لأول مرة
+function renderNameSetup() {
+  root.innerHTML = `
+    <main class="center">
+      <section class="panel narrow">
+        <div class="logo">⚽</div>
+        <h1>أهلاً بك في تحدّي التوقعات</h1>
+        <p class="muted">
+          اختر الاسم الذي سيظهر أمام أصدقائك في المسابقة.
+        </p>
+
+        <div class="field">
+          <label>اسم اللاعب</label>
+          <input
+            id="playerName"
+            type="text"
+            maxlength="30"
+            minlength="2"
+            autocomplete="nickname"
+            placeholder="اكتب اسمك هنا"
+          >
+        </div>
+
+        <button id="saveName">حفظ ومتابعة</button>
+        <p id="notice" class="notice"></p>
+        <button class="secondary small" id="nameLogout">تسجيل الخروج</button>
+      </section>
+    </main>
+  `;
+
+  $('#saveName').onclick = savePlayerName;
+
+  $('#playerName').addEventListener('keydown', event => {
+    if (event.key === 'Enter') {
+      savePlayerName();
+    }
+  });
+
+  $('#nameLogout').onclick = async () => {
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      msg(error.message, true);
+      return;
+    }
+
+    user = null;
+    profile = null;
+    matches = [];
+    predictions = [];
+    profiles = [];
+    renderAuth();
+  };
+}
+
+// حفظ اسم اللاعب في قاعدة البيانات
+async function savePlayerName() {
+  const input = $('#playerName');
+  const button = $('#saveName');
+
+  if (!input || !button) return;
+
+  const name = input.value.trim();
+
+  if (name.length < 2) {
+    msg('الاسم يجب أن يتكون من حرفين على الأقل.', true);
+    return;
+  }
+
+  if (name.length > 30) {
+    msg('الاسم يجب ألا يتجاوز 30 حرفاً.', true);
+    return;
+  }
+
+  button.disabled = true;
+  msg('جارٍ حفظ الاسم...');
+
+  try {
+    // تحديث اسم المستخدم دون تغيير صلاحياته
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ display_name: name })
+      .eq('id', user.id)
+      .select('id,display_name,role')
+      .maybeSingle();
+
+    if (error) throw error;
+
+    // إذا لم يكن سجل الملف الشخصي موجوداً، ننشئه
+    if (!data) {
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert({
+          id: user.id,
+          display_name: name,
+          role: 'user'
+        });
+
+      if (insertError) throw insertError;
+    }
+
+    await loadData();
+
+    if (!profile?.display_name) {
+      throw new Error('لم يتم العثور على الاسم المحفوظ. حاول مرة أخرى.');
+    }
+
+    tab = 'matches';
+    shell();
+
+  } catch (error) {
+    msg(
+      `تعذر حفظ الاسم: ${error.message || error}`,
+      true
+    );
+    button.disabled = false;
+  }
 }
 
 function shell() {
@@ -204,8 +320,7 @@ function shell() {
     </div>
   `;
 
-  $('#welcome').textContent =
-    profile?.display_name || user.email;
+  $('#welcome').textContent = profile?.display_name || '';
 
   $('#logout').onclick = async () => {
     const { error } = await supabase.auth.signOut();
@@ -264,12 +379,15 @@ async function loadData() {
 
   profile = profiles.find(x => x.id === user.id) || {
     id: user.id,
-    display_name: user.email,
+    display_name: '',
     role: 'user'
   };
 }
 
-// قانون النقاط الجديد
+// قانون النقاط:
+// النتيجة المطابقة تماماً = نقطتان
+// توقع الفائز أو التعادل بشكل صحيح = نقطة
+// التوقع الخاطئ = صفر
 function pointsFor(pred, match) {
   if (
     !match ||
@@ -284,10 +402,7 @@ function pointsFor(pred, match) {
     Number(pred.home_score) === Number(match.home_score) &&
     Number(pred.away_score) === Number(match.away_score);
 
-  // النتيجة المطابقة تماماً = نقطتان
-  if (exact) {
-    return 2;
-  }
+  if (exact) return 2;
 
   const actual = Math.sign(
     Number(match.home_score) - Number(match.away_score)
@@ -297,8 +412,6 @@ function pointsFor(pred, match) {
     Number(pred.home_score) - Number(pred.away_score)
   );
 
-  // توقع الفائز أو التعادل بشكل صحيح = نقطة واحدة
-  // التوقع الخاطئ = صفر
   return actual === guessed ? 1 : 0;
 }
 
@@ -713,6 +826,18 @@ async function boot() {
     }
 
     await loadData();
+
+    // إذا لم يختر المستخدم اسماً بعد، نعرض شاشة اختيار الاسم
+    if (
+      !profile?.display_name ||
+      profile.display_name.trim() === '' ||
+      profile.display_name === user.email
+    ) {
+      renderNameSetup();
+      return;
+    }
+
+    tab = 'matches';
     shell();
 
   } catch (error) {
