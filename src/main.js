@@ -269,6 +269,7 @@ async function loadData() {
   };
 }
 
+// قانون النقاط الجديد
 function pointsFor(pred, match) {
   if (
     !match ||
@@ -283,6 +284,11 @@ function pointsFor(pred, match) {
     Number(pred.home_score) === Number(match.home_score) &&
     Number(pred.away_score) === Number(match.away_score);
 
+  // النتيجة المطابقة تماماً = نقطتان
+  if (exact) {
+    return 2;
+  }
+
   const actual = Math.sign(
     Number(match.home_score) - Number(match.away_score)
   );
@@ -291,30 +297,9 @@ function pointsFor(pred, match) {
     Number(pred.home_score) - Number(pred.away_score)
   );
 
-  let pts = 0;
-
-  if (exact) {
-    pts += 5;
-  } else if (actual === guessed) {
-    pts += 3;
-  }
-
-  if (Number(pred.home_score) === Number(match.home_score)) {
-    pts += 1;
-  }
-
-  if (Number(pred.away_score) === Number(match.away_score)) {
-    pts += 1;
-  }
-
-  if (
-    Number(pred.home_score) - Number(pred.away_score) ===
-    Number(match.home_score) - Number(match.away_score)
-  ) {
-    pts += 2;
-  }
-
-  return pts;
+  // توقع الفائز أو التعادل بشكل صحيح = نقطة واحدة
+  // التوقع الخاطئ = صفر
+  return actual === guessed ? 1 : 0;
 }
 
 function renderTab() {
